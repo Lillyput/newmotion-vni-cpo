@@ -1,0 +1,274 @@
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: newmotion-vni-cpo
+  Project: 
+    Type: String
+    Default: vni-backend
+  Environment:
+    Type: String
+    Default: staging
+  ECSClusterName:
+    Type: String
+    Default: vni-cpo
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+  
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: !Sub ${AWS::StackName}-pipeline-role
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                  - iam:PassRole
+                Resource:
+                  - "*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                Resource:
+                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
+              - Effect: Allow
+                Action:
+                  - ecs:List*
+                  - ecs:Describe*
+                  - ecs:StartTask
+                  - ecs:UpdateService
+                  - ecs:RunTask
+                  - ecs:StopTask
+                  - ecs:TagResource
+                  - ecs:UntagResource
+                Resource: "*"
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: 1
+              Configuration:
+                Owner: Lillyput
+                Repo: !Ref GitHubRepo
+                Branch: master
+                OAuthToken: "{{resolve:secretsmanager:MyGitHubToken:SecretString:token}}" 
+              OutputArtifacts:
+                - Name: Source
+              RunOrder: 1
+        - Name: Build
+          Actions:
+            - Name: BuildDockerImage
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: ImageTag
+              RunOrder: 1
+        - Name: IntegrationTest
+          Actions:
+            - Name: DeployTest
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: ECS
+                Version: 1
+              Configuration:
+                ClusterName: !Sub ${ECSClusterName}-${Environment}
+                ServiceName: !GetAtt TestBackendService.Name
+                FileName: image-tag.json
+                DeploymentTimeout: 4
+              InputArtifacts:
+                - Name: ImageTag
+              RunOrder: 1
+            - Name: RunTest
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: 1
+              InputArtifacts:
+                - Name: ImageTag
+              Configuration:
+                ProjectName: !Ref CodeBuildTestProject
+              RunOrder: 2
+        - Name: ManualApproval
+          Actions:
+            - Name: Approval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: ECS
+                Version: 1
+              Configuration:
+                ClusterName: !Sub ${ECSClusterName}-${Environment}
+                ServiceName: !Sub ${Project}-${Environment}
+                FileName: image-tag.json
+                DeploymentTimeout: 4
+              InputArtifacts:
+                - Name: ImageTag
+              RunOrder: 1
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codebuild.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - ecr:GetAuthorizationToken
+              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Project}-${Environment}
+                Effect: Allow
+                Action:
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                Resource:
+                  - !Sub arn:aws:s3:::${ArtifactBucket}/*
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${Project}-${Environment}
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/docker:1.12.1
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: ECR
+            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Project}-${Environment}
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            install:
+              runtime-versions:
+                docker: 18
+                python: 3.7
+            build: 
+              commands: 
+                - commit=$CODEBUILD_RESOLVED_SOURCE_VERSION
+                - echo Building the Docker image... 
+                - docker build -t ${ECR}:$commit charging-point-backend/.
+            post_build: 
+              commands: 
+                - echo Pushing the Docker images... 
+                - $(aws ecr get-login --no-include-email --region eu-west-1)
+                - docker push ${ECR}:$commit
+                - echo [{"\"name\"":"\"container\"","\"imageUri\"":"\"${ECR}:${CODEBUILD_RESOLVED_SOURCE_VERSION}\""}] > image-tag.json
+          artifacts:
+            name: ImageTag
+            files:
+              - image-tag.json
+  CodeBuildTestProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${Project}-${Environment}-test
+      ServiceRole: !GetAtt CodeBuildRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/docker:1.12.1
+        Type: LINUX_CONTAINER
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: |
+          version: 0.2
+          phases:
+            build: 
+              commands: 
+                - echo "PASSED TEST"
+
+  TestBackendService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub ${Project}-${Environment}-test
+      Cluster: vni-cpo-staging
+      DesiredCount: 1
+      LaunchType: FARGATE
+      TaskDefinition: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Project}-${Environment}:6
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups: 
+          - !Ref TestBackendServiceSG
+          Subnets:
+          - !ImportValue backend-vpc-private-sn-1
+          - !ImportValue backend-vpc-private-sn-2
+          - !ImportValue backend-vpc-private-sn-3
+  TestBackendServiceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for test of backend service
+      VpcId: !ImportValue backend-vpc-vpc

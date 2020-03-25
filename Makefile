@@ -20,6 +20,12 @@ deploy-stack:
 			BackendMem=${BACKEND_MEM} BackendCPU=${BACKEND_CPU} \
 			ServerNum=${SERVER_NUM} BackendPort=${BACKEND_PORT} WhitelistIp=${WHITELIST_IP} 
 
+deploy-delivery-pipeline:
+	AWS_PROFILE=${AWS_PROFILE} aws cloudformation deploy \
+	--template-file cloudformation/deployment-pipeline.yml \
+	--stack-name vni-cpo-deployment-pipeline-${ENVIRONMENT} \
+	--capabilities CAPABILITY_IAM
+
 
 ##CHARGING POINT BACKEND SERVICE
 
