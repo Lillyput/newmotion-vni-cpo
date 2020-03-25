@@ -1,0 +1,154 @@
+Parameters:
+  Project: 
+    Type: String
+  Environment:
+    Type: String
+  BackendMem:
+    Type: String
+  BackendCPU:
+    Type: String
+  ServerNum:
+    Type: String
+  BackendPort:
+    Type: String
+  WhitelistIp:
+    Type: String
+  HealthCheckPort:
+    Type: String
+    Default: 5000
+
+Resources:
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${AWS::StackName}
+  BackendRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub ${Project}-${Environment}
+  
+  BackendService:
+    Type: AWS::ECS::Service
+    DependsOn: LBListener 
+    Properties:
+      ServiceName: !Sub ${Project}-${Environment}
+      Cluster: !Ref Cluster
+      DesiredCount: !Ref ServerNum
+      LaunchType: FARGATE
+      TaskDefinition: !Ref BackendTaskDefinition
+      LoadBalancers:
+        - ContainerName: container
+          ContainerPort: !Ref BackendPort
+          TargetGroupArn: !Ref BackendTargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups: 
+          - !Ref BackendServiceSG
+          Subnets:
+          - !ImportValue backend-vpc-private-sn-1
+          - !ImportValue backend-vpc-private-sn-2
+          - !ImportValue backend-vpc-private-sn-3
+
+  BackendLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      IpAddressType: ipv4
+      Name: !Sub ${Project}-${Environment}-lb
+      SecurityGroups: 
+        - !Ref BackendLBSG
+      Subnets: 
+      - !ImportValue backend-vpc-public-sn-1
+      - !ImportValue backend-vpc-public-sn-2
+      - !ImportValue backend-vpc-public-sn-3
+      Type: application
+  BackendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      Name: !Sub ${Project}-${Environment}
+      Port: !Ref BackendPort
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !ImportValue backend-vpc-vpc
+      HealthCheckPath: /health_check
+      HealthCheckPort: !Ref HealthCheckPort
+  LBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref BackendTargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref BackendLoadBalancer
+      Port: !Ref BackendPort
+      Protocol: HTTP
+  BackendLBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for backend load balancer
+      SecurityGroupIngress:
+        - IpProtocol: TCP
+          ToPort: !Ref BackendPort
+          FromPort: !Ref BackendPort
+          CidrIp: !Ref WhitelistIp
+          Description: my IP
+      VpcId: !ImportValue backend-vpc-vpc
+  BackendServiceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for backend service
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          ToPort: !Ref BackendPort
+          FromPort: !Ref BackendPort
+          SourceSecurityGroupId: !Ref BackendLBSG
+          Description: backend load balancer
+        - IpProtocol: tcp
+          ToPort: !Ref HealthCheckPort
+          FromPort: !Ref HealthCheckPort
+          SourceSecurityGroupId: !Ref BackendLBSG
+          Description: backend load balancer healthcheck
+      VpcId: !ImportValue backend-vpc-vpc
+
+  BackendTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${Project}-${Environment}
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      Cpu: !Ref BackendCPU
+      Memory: !Ref BackendMem
+      ContainerDefinitions:
+        - Name: container
+          Essential: true
+          PortMappings:
+          - ContainerPort: !Ref BackendPort
+            HostPort: !Ref BackendPort
+          - ContainerPort: !Ref HealthCheckPort
+            HostPort: !Ref HealthCheckPort
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${BackendRepository}:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchGroup
+              awslogs-region: !Sub ${AWS::Region}
+              awslogs-stream-prefix: !Ref Environment
+  CloudWatchGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref Project
+      RetentionInDays: 365
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - sts:AssumeRole
+            Principal:
+              Service:
+                - ecs-tasks.amazonaws.com
