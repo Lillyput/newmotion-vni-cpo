@@ -146,7 +146,6 @@ Resources:
                 ClusterName: !Sub ${ECSClusterName}-${Environment}
                 ServiceName: !Sub ${Project}-${Environment}
                 FileName: image-tag.json
-                DeploymentTimeout: 4
               InputArtifacts:
                 - Name: ImageTag
               RunOrder: 1

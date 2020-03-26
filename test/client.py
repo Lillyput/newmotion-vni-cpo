@@ -2,6 +2,7 @@ import websocket
 import time
 import sys
 import os
+import ssl
 
 url = os.environ.get("BACKEND_URL")
 
@@ -25,9 +26,9 @@ def on_open(ws):
 
 if __name__ == "__main__":
     websocket.enableTrace(True)
-    ws = websocket.WebSocketApp("ws://"+url,
+    ws = websocket.WebSocketApp("wss://"+url,
                               on_message = on_message,
                               on_error = on_error,
                               on_close = on_close)
     ws.on_open = on_open
-    ws.run_forever()
+    ws.run_forever(sslopt={"cert_reqs": ssl.CERT_NONE})
