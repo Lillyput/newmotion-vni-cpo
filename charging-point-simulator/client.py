@@ -15,14 +15,13 @@ def on_error(ws, error):
 def on_close(ws):
     print("### closed ###")
 
+#Charging point is sending "Hello" to backend every 5sec
 def on_open(ws):
-
     while True:
         time.sleep(5)
         ws.send("Hello")
     time.sleep(1)
     ws.close()
-
 
 if __name__ == "__main__":
     websocket.enableTrace(True)

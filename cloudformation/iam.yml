@@ -1,4 +1,6 @@
 Resources:
+
+##USERS
   AdminUser1:
     Type: AWS::IAM::User
     Properties:
@@ -24,6 +26,8 @@ Resources:
         Password: Chang3me
         PasswordResetRequired: true
   
+##ADMINISTRATORS GROUP
+#Full access to account excluding organization level permissions
   AdminGroup:
     Type: AWS::IAM::Group
     Properties: 
@@ -63,6 +67,8 @@ Resources:
       Users:
         - !Ref AdminUser1
 
+##DEVELOPERS GROUP
+#Access to services and IAM permissions limited only to the user him/herself
   DevGroup:
     Type: AWS::IAM::Group
     Properties: 
@@ -176,7 +182,6 @@ Resources:
             - iam:List*
             Resource:
             - "*"
-
   DevGroupAddition:
     Type: AWS::IAM::UserToGroupAddition
     Properties:
@@ -184,6 +189,8 @@ Resources:
       Users:
         - !Ref DevUser1
 
+#AUDITORS GROUP
+#Standard readonly access
   AuditGroup:
     Type: AWS::IAM::Group
     Properties: 
@@ -197,4 +204,3 @@ Resources:
       GroupName: !Ref AuditGroup
       Users:
         - !Ref AuditUser1
-

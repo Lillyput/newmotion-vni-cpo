@@ -7,10 +7,6 @@ Parameters:
     Default: vni-backend
   Environment:
     Type: String
-    Default: staging
-  ECSClusterName:
-    Type: String
-    Default: vni-cpo
 
 Resources:
   ArtifactBucket:
@@ -107,7 +103,9 @@ Resources:
                 Provider: ECS
                 Version: 1
               Configuration:
-                ClusterName: !Sub ${ECSClusterName}-${Environment}
+                ClusterName: 
+                  Fn::ImportValue:
+                    !Sub "vni-cpo-${Environment}--cluster-name"
                 ServiceName: !GetAtt TestBackendService.Name
                 FileName: image-tag.json
                 DeploymentTimeout: 4
@@ -143,7 +141,9 @@ Resources:
                 Provider: ECS
                 Version: 1
               Configuration:
-                ClusterName: !Sub ${ECSClusterName}-${Environment}
+                ClusterName: 
+                  Fn::ImportValue:
+                    !Sub "vni-cpo-${Environment}--cluster-name"
                 ServiceName: !Sub ${Project}-${Environment}
                 FileName: image-tag.json
               InputArtifacts:
@@ -205,7 +205,7 @@ Resources:
         Type: LINUX_CONTAINER
         EnvironmentVariables:
           - Name: ECR
-            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Project}-${Environment}
+            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Project}-charging-point-${Environment}
       Source:
         Type: CODEPIPELINE
         BuildSpec: |
@@ -249,15 +249,16 @@ Resources:
             build: 
               commands: 
                 - echo "PASSED TEST"
-
   TestBackendService:
     Type: AWS::ECS::Service
     Properties:
-      ServiceName: !Sub ${Project}-${Environment}-test
-      Cluster: vni-cpo-staging
+      ServiceName: !Sub ${Project}-charging-point-${Environment}-test
+      Cluster: 
+        Fn::ImportValue:
+          !Sub "vni-cpo-${Environment}--cluster-name"
       DesiredCount: 1
       LaunchType: FARGATE
-      TaskDefinition: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Project}-${Environment}:6
+      TaskDefinition: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Project}-charging-point-${Environment}:6
       NetworkConfiguration:
         AwsvpcConfiguration:
           SecurityGroups: 
