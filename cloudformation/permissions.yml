@@ -1,0 +1,200 @@
+Resources:
+  AdminUser1:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: admin_user1
+      Path: /
+      LoginProfile:
+        Password: Chang3me
+        PasswordResetRequired: true
+  DevUser1:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: dev_user1
+      Path: /
+      LoginProfile:
+        Password: Chang3me
+        PasswordResetRequired: true
+  AuditUser1:
+    Type: AWS::IAM::User
+    Properties:
+      UserName: audit_user1
+      Path: /
+      LoginProfile:
+        Password: Chang3me
+        PasswordResetRequired: true
+  
+  AdminGroup:
+    Type: AWS::IAM::Group
+    Properties: 
+      GroupName: admins
+      Path: /
+      Policies:
+      - PolicyName: AdminAccess
+        PolicyDocument: 
+          Version: '2012-10-17'
+          Statement:
+          - Sid: allowall
+            Effect: Allow
+            Action:
+              - "*"
+            Resource: "*"
+          - Sid: denyorgactions
+            Effect: Deny
+            Action:
+            - organizations:InviteAccountToOrganization
+            - organizations:DeleteOrganizationalUnit
+            - organizations:CreateAccount
+            - organizations:DeleteOrganization
+            - organizations:LeaveOrganization
+            - organizations:RemoveAccountFromOrganization
+            - organizations:UpdateOrganizationalUnit
+            - organizations:CreateGovCloudAccount
+            - organizations:CreateOrganizationalUnit
+            - organizations:MoveAccount
+            - organizations:CreateOrganization
+            - iam:CreateAccountAlias
+            - iam:DeleteAccountAlias
+            Resource: "*"
+  AdminGroupAddition:
+    Type: AWS::IAM::UserToGroupAddition
+    Properties:
+      GroupName: !Ref AdminGroup
+      Users:
+        - !Ref AdminUser1
+
+  DevGroup:
+    Type: AWS::IAM::Group
+    Properties: 
+      GroupName: developers
+      Path: /
+      Policies:
+      - PolicyName: DeveloperAccess
+        PolicyDocument: 
+          Version: '2012-10-17'
+          Statement:
+          - Sid: VisualEditor0
+            Effect: Deny
+            Action:
+            - organizations:*
+            - account:*
+            - iam:CreateAccountAlias
+            - iam:DeleteAccountAlias
+            - iam:GetAccountPasswordPolicy
+            - iam:DeleteAccountPasswordPolicy
+            - iam:UpdateAccountPasswordPolicy
+            - iam:CreateGroup
+            - iam:UpdateGroup
+            - iam:DeleteGroup
+            - iam:PutGroupPolicy
+            - iam:AttachGroupPolicy
+            - iam:DetachGroupPolicy
+            - iam:DeleteGroupPolicy
+            - iam:AddUserToGroup
+            - iam:RemoveUserFromGroup
+            - iam:CreateUser
+            - iam:DeleteUser
+            - iam:PutUserPolicy
+            - iam:AttachUserPolicy
+            - iam:DetachUserPolicy
+            - iam:DeleteUserPolicy
+            - iam:PutUserPermissionsBoundary
+            - iam:DeleteUserPermissionsBoundary
+            - iam:TagUser
+            - iam:UntagUser
+            - iam:CreateOpenIDConnectProvider
+            - iam:UpdateOpenIDConnectProviderThumbprint
+            - iam:AddClientIDToOpenIDConnectProvider
+            - iam:RemoveClientIDFromOpenIDConnectProvider
+            - iam:DeleteOpenIDConnectProvider
+            - iam:CreateSAMLProvider
+            - iam:UpdateSAMLProvider
+            - iam:DeleteSAMLProvider
+            - iam:UploadSigningCertificate
+            - iam:UpdateSigningCertificate
+            - iam:DeleteSigningCertificate
+            Resource: "*"
+          - Sid: VisualEditor1
+            Effect: Allow
+            NotAction:
+            - iam:GetUser
+            - iam:UpdateUser
+            - iam:ListUsers
+            - iam:ChangePassword
+            - iam:CreateLoginProfile
+            - iam:DeleteLoginProfile
+            - iam:ListMFADevices
+            - iam:EnableMFADevice
+            - iam:ResyncMFADevice
+            - iam:CreateVirtualMFADevice
+            - iam:ListVirtualMFADevices
+            - iam:CreateAccessKey
+            - iam:UpdateAccessKey
+            - iam:DeleteAccessKey
+            - iam:UploadSSHPublicKey
+            - iam:UpdateSSHPublicKey
+            - iam:DeleteSSHPublicKey
+            - iam:ListServiceSpecificCredentials
+            - iam:CreateServiceSpecificCredential
+            - iam:UpdateServiceSpecificCredential
+            - iam:ResetServiceSpecificCredential
+            - iam:DeleteServiceSpecificCredential
+            Resource: "*"
+          - Sid: VisualEditor2
+            Effect: Allow
+            Action:
+            - iam:GetUser
+            - iam:UpdateUser
+            - iam:ChangePassword
+            - iam:GetLoginProfile
+            - iam:CreateLoginProfile
+            - iam:UpdateLoginProfile
+            - iam:DeleteLoginProfile
+            - iam:EnableMFADevice
+            - iam:ResyncMFADevice
+            - iam:CreateVirtualMFADevice
+            - iam:DeactivateMFADevice
+            - iam:DeleteVirtualMFADevice
+            - iam:CreateAccessKey
+            - iam:UpdateAccessKey
+            - iam:DeleteAccessKey
+            - iam:GetAccessKeyLastUsed
+            - iam:GetSSHPublicKey
+            - iam:UploadSSHPublicKey
+            - iam:UpdateSSHPublicKey
+            - iam:DeleteSSHPublicKey
+            - iam:CreateServiceSpecificCredential
+            - iam:UpdateServiceSpecificCredential
+            - iam:ResetServiceSpecificCredential
+            - iam:DeleteServiceSpecificCredential
+            Resource:
+            - arn:aws:iam::*:user/${aws:username}
+            - arn:aws:iam::*:mfa/*
+          - Sid: VisualEditor3
+            Effect: Allow
+            Action:
+            - iam:List*
+            Resource:
+            - "*"
+
+  DevGroupAddition:
+    Type: AWS::IAM::UserToGroupAddition
+    Properties:
+      GroupName: !Ref DevGroup
+      Users:
+        - !Ref DevUser1
+
+  AuditGroup:
+    Type: AWS::IAM::Group
+    Properties: 
+      GroupName: auditors
+      Path: /
+      ManagedPolicyArns: 
+        - arn:aws:iam::aws:policy/SecurityAudit
+  AuditGroupAddition:
+    Type: AWS::IAM::UserToGroupAddition
+    Properties:
+      GroupName: !Ref AuditGroup
+      Users:
+        - !Ref AuditUser1
+
