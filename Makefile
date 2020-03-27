@@ -32,14 +32,14 @@ deploy-delivery-pipeline:
 IMAGE_NAME=${PROJECT}-${_ENVIRONMENT}
 
 build-cp-backend: 
-	docker build -t ${_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/$(IMAGE_NAME) charging-point-backend/.
+	docker build -t ${_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/vni-backend-third-party-staging third-party-backend/.
 
 run-cp-backend-local: build-cp-backend
 	docker run -p 80:80 -p 5000:5000 ${_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/$(IMAGE_NAME):latest
 
 deploy-cp-backend: build-cp-backend
 	$$(AWS_PROFILE=${AWS_PROFILE} aws ecr get-login --no-include-email --region eu-west-1)
-	docker push ${_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/$(IMAGE_NAME):latest
+	docker push ${_ACCOUNT_ID}.dkr.ecr.eu-west-1.amazonaws.com/vni-backend-third-party-staging:latest
 
 ##TEST
 
@@ -48,3 +48,13 @@ _BACKEND_HOSTNAME = ${BACKEND_HOSTNAME}
 run-test:
 	docker build -t vni-cpo-test test/.
 	docker run -e BACKEND_URL=${_BACKEND_HOSTNAME} vni-cpo-test
+
+create-global-accelerator:
+	AWS_PROFILE=${AWS_PROFILE} aws globalaccelerator create-accelerator \
+    	--name third-party-backend \
+    	--region us-west-2 --idempotency-token third-party-backend-aswrkfsd
+
+	AWS_PROFILE=${AWS_PROFILE} aws globalaccelerator create-listener \
+		--accelerator-arn arn:aws:globalaccelerator::018160963332:accelerator/7d59174c-44a6-4e03-8a04-2d445783c958 \
+		--port-ranges FromPort=443,ToPort=443  \
+		--protocol TCP --region us-west-2  --idempotency-token third-party-backend-aswrkfsd 

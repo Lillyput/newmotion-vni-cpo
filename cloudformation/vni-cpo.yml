@@ -17,6 +17,19 @@ Parameters:
     Type: String
     Default: 5000
 
+  ThirdPartyServerNum:
+    Type: String
+    Default: 1
+  ThirdPartyBackendPort:
+    Type: String
+    Default: 80
+  ThirdPartyBackendMem:
+    Type: String
+    Default: 512
+  ThirdPartyBackendCPU:
+    Type: String
+    Default: 256
+
 Resources:
   Cluster:
     Type: AWS::ECS::Cluster
@@ -154,12 +167,113 @@ Resources:
             Principal:
               Service:
                 - ecs-tasks.amazonaws.com
-  Route53Record:
-    Type: AWS::Route53::RecordSet
+
+###THIRD PARTY SERVICE
+
+  ThirdPartyBackendRepository:
+    Type: AWS::ECR::Repository
     Properties:
-      AliasTarget:
-        HostedZoneId: !GetAtt BackendLoadBalancer.CanonicalHostedZoneID
-        DNSName: !GetAtt BackendLoadBalancer.DNSName
-      HostedZoneName: vni-cpo.com.
-      Name: !Sub 'charging-point-backend.${Environment}.vni-cpo.com.'
-      Type: A
+      RepositoryName: !Sub ${Project}-third-party-${Environment}
+  
+  ThirdPartyBackendService:
+    Type: AWS::ECS::Service
+    DependsOn: ThirdPartyLBListener 
+    Properties:
+      ServiceName: !Sub ${Project}-third-party--${Environment}
+      Cluster: !Ref Cluster
+      DesiredCount: !Ref ThirdPartyServerNum
+      LaunchType: FARGATE
+      TaskDefinition: !Ref ThirdPartyBackendTaskDefinition
+      LoadBalancers:
+        - ContainerName: container
+          ContainerPort: !Ref ThirdPartyBackendPort
+          TargetGroupArn: !Ref ThirdPartyBackendTargetGroup
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups: 
+          - !Ref ThirdPartyBackendServiceSG
+          Subnets:
+          - !ImportValue backend-vpc-private-sn-1
+          - !ImportValue backend-vpc-private-sn-2
+          - !ImportValue backend-vpc-private-sn-3
+
+  ThirdPartyBackendLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: 
+      IpAddressType: ipv4
+      Name: !Sub ${Project}-third-party-${Environment}
+      SecurityGroups: 
+        - !Ref ThirdPartyBackendLBSG
+      Subnets: 
+      - !ImportValue backend-vpc-public-sn-1
+      - !ImportValue backend-vpc-public-sn-2
+      - !ImportValue backend-vpc-public-sn-3
+      Type: application
+  ThirdPartyBackendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: 
+      Name: !Sub ${Project}-third-party--${Environment}
+      Port: !Ref ThirdPartyBackendPort
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !ImportValue backend-vpc-vpc
+      HealthCheckPath: /health_check
+      HealthCheckPort: !Ref ThirdPartyBackendPort
+  ThirdPartyLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        - TargetGroupArn: !Ref ThirdPartyBackendTargetGroup
+          Type: forward
+      Certificates:
+      - CertificateArn: 'arn:aws:acm:eu-west-1:018160963332:certificate/4a913415-f079-48bb-acf6-3efa731087da'
+      LoadBalancerArn: !Ref ThirdPartyBackendLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+  ThirdPartyBackendLBSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for third party backend load balancer
+      SecurityGroupIngress:
+        - IpProtocol: TCP
+          ToPort: 443
+          FromPort: 443
+          CidrIp: !Ref WhitelistIp
+          Description: my IP
+      VpcId: !ImportValue backend-vpc-vpc
+  ThirdPartyBackendServiceSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG for third party backend service
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          ToPort: !Ref ThirdPartyBackendPort
+          FromPort: !Ref ThirdPartyBackendPort
+          SourceSecurityGroupId: !Ref ThirdPartyBackendLBSG
+          Description: third party backend load balancer
+      VpcId: !ImportValue backend-vpc-vpc
+
+  ThirdPartyBackendTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub ${Project}-third-party-backend-${Environment}
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      Cpu: !Ref ThirdPartyBackendCPU
+      Memory: !Ref ThirdPartyBackendMem
+      ContainerDefinitions:
+        - Name: container
+          Essential: true
+          PortMappings:
+          - ContainerPort: !Ref ThirdPartyBackendPort
+            HostPort: !Ref ThirdPartyBackendPort
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ThirdPartyBackendRepository}:latest
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref CloudWatchGroup
+              awslogs-region: !Sub ${AWS::Region}
+              awslogs-stream-prefix: !Ref Environment
+  
