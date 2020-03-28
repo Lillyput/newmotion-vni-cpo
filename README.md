@@ -75,7 +75,7 @@ Run this client:
 
 ```AWS_PROFILE=<profile-name> ACCOUNT_ID=<xxxxxx> ENVIRONMENT=<environment> BACKEND_HOSTNAME=vni-backend-cp-test-1433876008.eu-west-1.elb.amazonaws.com make run-charging-point-simulator```
 
-NOTE: BACKEND_HOSTNAME should be one of the IP addresses that Global Accelerator exposes.
+NOTE: BACKEND_HOSTNAME should be one of the IP addresses that Global Accelerator exposes. You can find it [here](https://us-west-2.console.aws.amazon.com/ec2/v2/home?region=us-west-2#GlobalAcceleratorDashboard:)
 
 This simple client will connect to the charging-point-backend service in the cloud using WSS protocol and send "Hello" every 5 seconds.
 
