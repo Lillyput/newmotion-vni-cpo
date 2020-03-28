@@ -49,7 +49,7 @@ Resources:
   CloudWatchGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Ref Project
+      LogGroupName: !Sub ${Project}-${Environment}
       RetentionInDays: 365
 
 ##CHARGING POINTS' BACKEND SERVICE

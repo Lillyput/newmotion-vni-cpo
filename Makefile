@@ -11,7 +11,7 @@ endif
 ##INFRASTRUCTURE
 
 ##WHITELIST THE IP RANGE OF THE THIRD PARTY HUB
-WHITELIST_IP = 95.96.252.213/32
+_WHITELIST_IP = ${WHITELIST_IP}
 
 deploy-backend-services:
 	AWS_PROFILE=${AWS_PROFILE} aws cloudformation deploy \
@@ -20,14 +20,15 @@ deploy-backend-services:
 		--capabilities CAPABILITY_IAM \
 		--parameter-overrides \
 			Environment=${ENVIRONMENT} \
-			ThirdPartyWhitelistIp=${WHITELIST_IP} 
+			ThirdPartyWhitelistIp=${_WHITELIST_IP} 
 
 deploy-delivery-pipeline:
 	AWS_PROFILE=${AWS_PROFILE} aws cloudformation deploy \
 	--stack-name vni-cpo-deployment-pipeline-${ENVIRONMENT} \
 	--template-file cloudformation/deployment-pipeline.yml \
-	--capabilities CAPABILITY_IAM
-
+	--capabilities CAPABILITY_IAM \
+	--parameter-overrides \
+			Environment=${ENVIRONMENT}
 
 ##CHARGING POINT BACKEND SERVICE
 
@@ -67,13 +68,22 @@ run-charging-point-simulator:
 	docker run -e BACKEND_URL=${_BACKEND_HOSTNAME} vni-cpo-client
 	$(info BACKEND_HOSTNAME should be an IP address of charging-point-backend service)
 
+
 ##EXAMPLE OF CREATING GLOBAL ACCELERATOR
 create-global-accelerator:
 	AWS_PROFILE=${AWS_PROFILE} aws globalaccelerator create-accelerator \
-    	--name third-party-backend \
+    	--name third-party-backend-${ENVIRONMENT} \
     	--region us-west-2 --idempotency-token third-party-backend-aswrkfsd
 
+create-globalaccelerator-listener:
 	AWS_PROFILE=${AWS_PROFILE} aws globalaccelerator create-listener \
-		--accelerator-arn arn:aws:globalaccelerator::${ACCOUNT_ID}:accelerator/7d59174c-44a6-4e03-8a04-2d445783c958 \
+		--accelerator-arn ${ACCELERATOR_ARN} \
 		--port-ranges FromPort=443,ToPort=443  \
 		--protocol TCP --region us-west-2  --idempotency-token third-party-backend-aswrkfsd 
+
+create-globalaccelerator-endpoint:
+	AWS_PROFILE=${AWS_PROFILE} aws globalaccelerator create-endpoint-group \
+		--listener-arn ${LISTENER_ARN} \
+		--endpoint-group-region eu-west-1 --region us-west-2 \
+		--endpoint-configurations \
+		EndpointId=${LOADBALANCER_ARN},Weight=128 --idempotency-token third-party-backend-aswrkfsd 

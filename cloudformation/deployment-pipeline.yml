@@ -46,14 +46,7 @@ Resources:
                   - !Sub arn:aws:s3:::${ArtifactBucket}/*
               - Effect: Allow
                 Action:
-                  - ecs:List*
-                  - ecs:Describe*
-                  - ecs:StartTask
-                  - ecs:UpdateService
-                  - ecs:RunTask
-                  - ecs:StopTask
-                  - ecs:TagResource
-                  - ecs:UntagResource
+                  - ecs:*
                 Resource: "*"
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
@@ -144,7 +137,7 @@ Resources:
                 ClusterName: 
                   Fn::ImportValue:
                     !Sub "vni-cpo-${Environment}--cluster-name"
-                ServiceName: !Sub ${Project}-${Environment}
+                ServiceName: !Sub ${Project}-charging-point-${Environment}
                 FileName: image-tag.json
               InputArtifacts:
                 - Name: ImageTag
@@ -174,7 +167,7 @@ Resources:
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                   - ecr:GetAuthorizationToken
-              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Project}-${Environment}
+              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Project}-charging-point-${Environment}
                 Effect: Allow
                 Action:
                   - ecr:GetDownloadUrlForLayer
@@ -195,7 +188,6 @@ Resources:
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Sub ${Project}-${Environment}
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
         Type: CODEPIPELINE
@@ -233,7 +225,7 @@ Resources:
   CodeBuildTestProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Sub ${Project}-${Environment}-test
+      Name: !Sub ${Project}-charging-point-${Environment}-test
       ServiceRole: !GetAtt CodeBuildRole.Arn
       Artifacts:
         Type: CODEPIPELINE
@@ -258,7 +250,7 @@ Resources:
           !Sub "vni-cpo-${Environment}--cluster-name"
       DesiredCount: 1
       LaunchType: FARGATE
-      TaskDefinition: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Project}-charging-point-${Environment}:6
+      TaskDefinition: !Sub arn:aws:ecs:${AWS::Region}:${AWS::AccountId}:task-definition/${Project}-charging-point-${Environment}:1
       NetworkConfiguration:
         AwsvpcConfiguration:
           SecurityGroups: 
